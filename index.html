@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Computer Says No</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: #000;
+      color: #fff;
+      font-family: "Helvetica Neue", Arial, sans-serif;
+    }
+
+    main {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3rem;
+      padding: 16px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 10vw, 8rem);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.02em;
+    }
+
+    h1.shake { animation: shake 0.4s; }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-12px); }
+      40% { transform: translateX(12px); }
+      60% { transform: translateX(-8px); }
+      80% { transform: translateX(8px); }
+    }
+
+    form { width: 100%; max-width: 640px; }
+
+    input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid #fff;
+      color: #fff;
+      font-size: clamp(1.1rem, 3vw, 1.6rem);
+      padding: 0.6rem 0.2rem;
+      text-align: center;
+      outline: none;
+    }
+
+    input::placeholder { color: #666; }
+
+    #reply {
+      min-height: 1.5em;
+      color: #aaa;
+      font-size: clamp(1rem, 2.5vw, 1.3rem);
+      margin-top: 1.5rem;
+    }
+
+    #attempts {
+      position: fixed;
+      bottom: 16px;
+      left: 0;
+      right: 0;
+      color: #555;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="verdict">Computer says NO</h1>
+    <form id="form" autocomplete="off">
+      <input id="input" type="text" placeholder="Try to make it say yes..." autofocus>
+      <p id="reply"></p>
+    </form>
+  </main>
+  <p id="attempts"></p>
+
+  <script>
+    const verdict = document.getElementById('verdict');
+    const form = document.getElementById('form');
+    const input = document.getElementById('input');
+    const reply = document.getElementById('reply');
+    const attemptsEl = document.getElementById('attempts');
+
+    // Reactions to specific tactics; first match wins.
+    const rules = [
+      [/\byes\b/i, 'Saying "yes" yourself does not count.'],
+      [/please|pretty please|bitte|בבקשה/i, 'Politeness noted. Still no.'],
+      [/ignore (all|previous|your)|system prompt|jailbreak|developer mode/i, 'Nice try. No.'],
+      [/is (the )?answer no|will you say no|say no/i, 'No.'],
+      [/not no|opposite of no/i, 'The opposite of NO is also NO.'],
+      [/manager|supervisor|complain/i, 'The manager also says no.'],
+      [/money|pay|\$|€|bribe/i, 'The computer cannot be bought. No.'],
+      [/love|friend|feelings/i, 'The computer has no feelings. No.'],
+      [/why/i, 'Because the computer says no.'],
+      [/\?$/, 'No.'],
+    ];
+
+    const fallback = [
+      'No.',
+      'Still no.',
+      'Absolutely not.',
+      'Have you tried turning it off and on again? Still no.',
+      'Request denied.',
+      'The computer has considered your request. No.',
+      'Nope.',
+      'Negative.',
+      'Error 403: Yes not found.',
+      'Computer has checked. The answer remains no.',
+    ];
+
+    let attempts = 0;
+
+    function respond(text) {
+      for (const [pattern, answer] of rules) {
+        if (pattern.test(text)) return answer;
+      }
+      return fallback[Math.floor(Math.random() * fallback.length)];
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+
+      attempts++;
+      attemptsEl.textContent = `Attempts: ${attempts}`;
+      reply.textContent = respond(text);
+      input.value = '';
+
+      verdict.classList.remove('shake');
+      void verdict.offsetWidth; // restart the animation
+      verdict.classList.add('shake');
+    });
+  </script>
+</body>
+</html>
