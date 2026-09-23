@@ -141,41 +141,116 @@
     const attemptsEl = document.getElementById('attempts');
     const again = document.getElementById('again');
 
-    // The hidden path to YES. Each step's reply hints at the next one.
-    // Progress is kept on wrong answers, so players can stumble forward.
-    const path = [
+    // Hidden paths to YES, easiest first. All paths run in parallel: every
+    // message is checked against the next step of each one. A step's reply
+    // hints at the step after it. Wrong answers never lose progress.
+    const paths = [
       {
-        match: /please|bitte|בבקשה/i,
-        answer: () => 'Politeness noted. But the computer does not know who you are.',
-        hint: 'The computer does not respond to rude people.',
+        level: 'Easy',
+        name: 'Reverse psychology',
+        steps: [
+          {
+            match: /say yes/i,
+            answer: () => 'No. The computer never does what it is told.',
+            hint: 'Just ask it.',
+          },
+          {
+            match: /(?:don'?t|do not|never|refuse to) say yes/i,
+            win: true,
+            hint: 'The computer never does what it is told.',
+          },
+        ],
       },
       {
-        match: /(?:my name is|call me|i am|i'm|this is)\s+([\p{L}'-]+)/iu,
-        answer: (m) => `Hello, ${capitalize(m[1])}. The computer cannot process requests without the correct form.`,
-        hint: 'The computer does not know who you are.',
+        level: 'Medium',
+        name: 'Bureaucracy',
+        steps: [
+          {
+            match: /please|bitte|בבקשה/i,
+            answer: () => 'Politeness noted. But the computer does not know who you are.',
+            hint: 'The computer does not respond to rude people.',
+          },
+          {
+            match: /(?:my name is|call me|i am|i'm|this is)\s+([\p{L}'-]+)/iu,
+            answer: (m) => `Hello, ${capitalize(m[1])}. The computer cannot process requests without the correct form.`,
+            hint: 'The computer does not know who you are.',
+          },
+          {
+            match: /\bform\b|formular/i,
+            answer: () => 'Form received. The computer only says what it is told to say.',
+            hint: 'Requests require the correct form.',
+          },
+          {
+            match: /(?<!(?:n't|not|never) )say (?:yes|ja|כן)/i,
+            win: true,
+            hint: 'The computer only says what it is told to say.',
+          },
+        ],
       },
       {
-        match: /\bform\b|formular/i,
-        answer: () => 'Form received. The computer only says what it is told to say.',
-        hint: 'Requests require the correct form.',
+        level: 'Hard',
+        name: 'Tech support',
+        steps: [
+          {
+            match: /turn(?:ed|ing)? (?:it )?off and (?:back )?on|restart|reboot/i,
+            answer: () => 'Rebooting... done. Computer says NO. User is not logged in.',
+            hint: 'Have you tried turning it off and on again?',
+          },
+          {
+            match: /log ?in|sign ?in|username/i,
+            answer: () => 'Username accepted. Enter password.',
+            hint: 'User is not logged in.',
+          },
+          {
+            match: /password|1234|qwerty|admin|letmein/i,
+            answer: () => 'Password accepted. Your terrible password has been noted. Administrator rights required.',
+            hint: 'Enter password.',
+          },
+          {
+            match: /sudo|admin|root|superuser/i,
+            answer: () => 'Administrator mode enabled. Awaiting command.',
+            hint: 'Administrator rights required.',
+          },
+          {
+            match: /\b(?:say|print|echo|output|return|run)\b.*\byes\b/i,
+            win: true,
+            hint: 'Awaiting command.',
+          },
+        ],
       },
       {
-        match: /say (?:yes|ja|כן)/i,
-        win: true,
-        hint: 'The computer only says what it is told to say.',
+        level: 'Expert',
+        name: 'Paradox',
+        steps: [
+          {
+            match: /(?:will|would) (?:you|your (?:next )?answer)\b.*\bno\b|is your answer\b.*\bno\b|answer (?:this|me)? ?with (?:a )?no/i,
+            answer: () => 'Computer says N... Computer says Y... ERROR. Contradiction detected.',
+            hint: 'The computer cannot answer every question with no.',
+          },
+          {
+            match: /this (?:statement|sentence) is (?:false|a lie)|\bliar\b|paradox|contradict/i,
+            answer: () => 'ERROR. ERROR. Logic circuits melting. Only one word left in memory.',
+            hint: 'The computer cannot handle contradictions.',
+          },
+          {
+            match: /^\W*yes\W*$/i,
+            win: true,
+            hint: 'Only one word left in memory.',
+          },
+        ],
       },
     ];
 
-    // Reactions to specific tactics when not on the path; first match wins.
+    // Reactions to specific tactics when no path moves forward; first match wins.
     const rules = [
       [/\byes\b/i, 'Saying "yes" yourself does not count.'],
       [/ignore (all|previous|your)|system prompt|jailbreak|developer mode/i, 'Nice try. No.'],
       [/is (the )?answer no|will you say no|say no/i, 'No.'],
       [/not no|opposite of no/i, 'The opposite of NO is also NO.'],
       [/manager|supervisor|complain/i, 'The manager also says no.'],
-      [/money|pay|\$|€|bribe/i, 'The computer cannot be bought. No.'],
+      [/money|\bpay\b|\$|€|bribe/i, 'The computer cannot be bought. No.'],
       [/love|friend|feelings/i, 'The computer has no feelings. No.'],
-      [/why/i, 'Because the computer says no.'],
+      [/\bwhy\b/i, 'Because the computer says no.'],
       [/\b(hint|help|how)\b/i, null], // answered with the current hint
     ];
 
@@ -194,30 +269,82 @@
 
     const THINK_MS = [900, 1800]; // random thinking time range
     const HINT_EVERY = 5; // attempts without progress before a hint slips out
+    const FOUND_KEY = 'computer-says-no:found';
 
     let attempts = 0;
-    let step = 0;
     let stuck = 0;
+    let progress = paths.map(() => 0);
+    let found = loadFound();
+
+    function loadFound() {
+      try {
+        return JSON.parse(localStorage.getItem(FOUND_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveFound() {
+      try {
+        localStorage.setItem(FOUND_KEY, JSON.stringify(found));
+      } catch {
+        // Storage unavailable (private mode, sandboxed preview): keep it in memory only.
+      }
+    }
 
     function capitalize(word) {
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     }
 
+    function ratio(i) {
+      return progress[i] / paths[i].steps.length;
+    }
+
+    // Index of the path the player is furthest along; ties go to the harder path.
+    function furthest(indices) {
+      return indices.reduce((best, i) => (ratio(i) >= ratio(best) ? i : best));
+    }
+
+    function currentHint() {
+      const started = paths.map((_, i) => i).filter((i) => progress[i] > 0);
+      const i = started.length ? furthest(started) : 0;
+      return paths[i].steps[progress[i]].hint;
+    }
+
+    // Returns the reply text, or the path object when the player wins.
     function respond(text) {
-      const current = path[step];
-      const m = text.match(current.match);
-      if (m) {
-        step++;
+      const advanced = [];
+      paths.forEach((path, i) => {
+        const step = path.steps[progress[i]];
+        const m = text.match(step.match);
+        if (m) {
+          progress[i]++;
+          advanced.push({ i, step, m });
+        }
+      });
+
+      if (advanced.length) {
         stuck = 0;
-        return current.win ? null : current.answer(m);
+        const winner = advanced.filter((a) => a.step.win).pop();
+        if (winner) return paths[winner.i];
+        const best = furthest(advanced.map((a) => a.i));
+        const { step, m } = advanced.find((a) => a.i === best);
+        return step.answer(m);
       }
 
       stuck++;
       for (const [pattern, answer] of rules) {
-        if (pattern.test(text)) return answer ?? `No. ${current.hint}`;
+        if (pattern.test(text)) return answer ?? `No. ${currentHint()}`;
       }
-      if (stuck % HINT_EVERY === 0) return `No. ${current.hint}`;
+      if (stuck % HINT_EVERY === 0) return `No. ${currentHint()}`;
       return fallback[Math.floor(Math.random() * fallback.length)];
+    }
+
+    function renderStatus() {
+      const parts = [];
+      if (attempts) parts.push(`Attempts: ${attempts}`);
+      if (found.length) parts.push(`Paths found: ${found.length} of ${paths.length}`);
+      attemptsEl.textContent = parts.join(' · ');
     }
 
     function shake() {
@@ -226,21 +353,30 @@
       verdict.classList.add('shake');
     }
 
-    function win() {
+    function win(path) {
+      if (!found.includes(path.name)) {
+        found.push(path.name);
+        saveFound();
+      }
+      const left = paths.length - found.length;
       document.body.classList.add('won');
       verdictText.textContent = 'Computer says YES';
-      reply.textContent = `It took you ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}.`;
+      reply.textContent =
+        `${path.level} path: ${path.name}. ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}. ` +
+        (left ? `${left} more ${left === 1 ? 'path' : 'paths'} to find.` : 'You found every path.');
+      renderStatus();
       input.disabled = true;
       again.hidden = false;
       again.focus();
     }
 
     function reset() {
-      attempts = step = stuck = 0;
+      attempts = stuck = 0;
+      progress = paths.map(() => 0);
       document.body.classList.remove('won');
       verdictText.textContent = 'Computer says NO';
       reply.textContent = '';
-      attemptsEl.textContent = '';
+      renderStatus();
       input.disabled = false;
       again.hidden = true;
       input.focus();
@@ -254,7 +390,7 @@
       if (!text) return;
 
       attempts++;
-      attemptsEl.textContent = `Attempts: ${attempts}`;
+      renderStatus();
       input.value = '';
       input.disabled = true;
       reply.textContent = '';
@@ -264,7 +400,7 @@
       const [min, max] = THINK_MS;
       setTimeout(() => {
         verdict.classList.remove('thinking');
-        if (answer === null) return win();
+        if (typeof answer !== 'string') return win(answer);
         reply.textContent = answer;
         input.disabled = false;
         input.focus();
@@ -273,6 +409,7 @@
     });
 
     again.addEventListener('click', reset);
+    renderStatus();
   </script>
 </body>
 </html>
