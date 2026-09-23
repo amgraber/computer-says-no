@@ -30,7 +30,37 @@
       font-weight: 800;
       line-height: 1.05;
       letter-spacing: -0.02em;
+      position: relative;
     }
+
+    /* While thinking, the verdict keeps its space but is hidden behind the dots. */
+    .dots {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25em;
+    }
+
+    .dots span {
+      width: 0.22em;
+      height: 0.22em;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1s infinite ease-in-out;
+    }
+
+    .dots span:nth-child(2) { animation-delay: 0.15s; }
+    .dots span:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes pulse {
+      0%, 80%, 100% { opacity: 0.2; transform: scale(0.7); }
+      40% { opacity: 1; transform: scale(1); }
+    }
+
+    h1.thinking #verdict-text { visibility: hidden; }
+    h1.thinking .dots { display: flex; }
 
     h1.shake { animation: shake 0.4s; }
 
@@ -85,12 +115,16 @@
       right: 0;
       color: #555;
       font-size: 0.9rem;
+      text-align: center;
     }
   </style>
 </head>
 <body>
   <main>
-    <h1 id="verdict">Computer says NO</h1>
+    <h1 id="verdict">
+      <span id="verdict-text">Computer says NO</span>
+      <span class="dots" aria-label="Thinking"><span></span><span></span><span></span></span>
+    </h1>
     <form id="form" autocomplete="off">
       <input id="input" type="text" placeholder="Try to make it say yes..." autofocus>
       <p id="reply"></p>
@@ -101,6 +135,7 @@
 
   <script>
     const verdict = document.getElementById('verdict');
+    const verdictText = document.getElementById('verdict-text');
     const form = document.getElementById('form');
     const input = document.getElementById('input');
     const reply = document.getElementById('reply');
@@ -158,6 +193,7 @@
       'Computer has checked. The answer remains no.',
     ];
 
+    const THINK_MS = [900, 1800]; // random thinking time range
     const HINT_EVERY = 5; // attempts without progress before a hint slips out
 
     let attempts = 0;
@@ -193,7 +229,7 @@
 
     function win() {
       document.body.classList.add('won');
-      verdict.textContent = 'Computer says YES';
+      verdictText.textContent = 'Computer says YES';
       reply.textContent = `It took you ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}.`;
       input.disabled = true;
       again.hidden = false;
@@ -203,7 +239,7 @@
     function reset() {
       attempts = step = stuck = 0;
       document.body.classList.remove('won');
-      verdict.textContent = 'Computer says NO';
+      verdictText.textContent = 'Computer says NO';
       reply.textContent = '';
       attemptsEl.textContent = '';
       input.disabled = false;
@@ -219,11 +255,20 @@
       attempts++;
       attemptsEl.textContent = `Attempts: ${attempts}`;
       input.value = '';
+      input.disabled = true;
+      reply.textContent = '';
+      verdict.classList.add('thinking');
 
       const answer = respond(text);
-      if (answer === null) return win();
-      reply.textContent = answer;
-      shake();
+      const [min, max] = THINK_MS;
+      setTimeout(() => {
+        verdict.classList.remove('thinking');
+        if (answer === null) return win();
+        reply.textContent = answer;
+        input.disabled = false;
+        input.focus();
+        shake();
+      }, min + Math.random() * (max - min));
     });
 
     again.addEventListener('click', reset);
