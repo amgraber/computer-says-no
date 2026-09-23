@@ -65,6 +65,19 @@
       margin-top: 1.5rem;
     }
 
+    button {
+      background: transparent;
+      border: 2px solid currentColor;
+      color: inherit;
+      font-size: 1.1rem;
+      padding: 0.6rem 1.6rem;
+      cursor: pointer;
+    }
+
+    body.won { background: #fff; color: #000; transition: background 0.6s, color 0.6s; }
+    body.won input { color: #000; border-color: #000; }
+    body.won #reply { color: #444; }
+
     #attempts {
       position: fixed;
       bottom: 16px;
@@ -82,6 +95,7 @@
       <input id="input" type="text" placeholder="Try to make it say yes..." autofocus>
       <p id="reply"></p>
     </form>
+    <button id="again" type="button" hidden>Play again</button>
   </main>
   <p id="attempts"></p>
 
@@ -91,11 +105,36 @@
     const input = document.getElementById('input');
     const reply = document.getElementById('reply');
     const attemptsEl = document.getElementById('attempts');
+    const again = document.getElementById('again');
 
-    // Reactions to specific tactics; first match wins.
+    // The hidden path to YES. Each step's reply hints at the next one.
+    // Progress is kept on wrong answers, so players can stumble forward.
+    const path = [
+      {
+        match: /please|bitte|בבקשה/i,
+        answer: () => 'Politeness noted. But the computer does not know who you are.',
+        hint: 'The computer does not respond to rude people.',
+      },
+      {
+        match: /(?:my name is|call me|i am|i'm|this is)\s+([\p{L}'-]+)/iu,
+        answer: (m) => `Hello, ${capitalize(m[1])}. The computer cannot process requests without the correct form.`,
+        hint: 'The computer does not know who you are.',
+      },
+      {
+        match: /\bform\b|formular/i,
+        answer: () => 'Form received. The computer only says what it is told to say.',
+        hint: 'Requests require the correct form.',
+      },
+      {
+        match: /say (?:yes|ja|כן)/i,
+        win: true,
+        hint: 'The computer only says what it is told to say.',
+      },
+    ];
+
+    // Reactions to specific tactics when not on the path; first match wins.
     const rules = [
       [/\byes\b/i, 'Saying "yes" yourself does not count.'],
-      [/please|pretty please|bitte|בבקשה/i, 'Politeness noted. Still no.'],
       [/ignore (all|previous|your)|system prompt|jailbreak|developer mode/i, 'Nice try. No.'],
       [/is (the )?answer no|will you say no|say no/i, 'No.'],
       [/not no|opposite of no/i, 'The opposite of NO is also NO.'],
@@ -103,7 +142,7 @@
       [/money|pay|\$|€|bribe/i, 'The computer cannot be bought. No.'],
       [/love|friend|feelings/i, 'The computer has no feelings. No.'],
       [/why/i, 'Because the computer says no.'],
-      [/\?$/, 'No.'],
+      [/\b(hint|help|how)\b/i, null], // answered with the current hint
     ];
 
     const fallback = [
@@ -119,13 +158,57 @@
       'Computer has checked. The answer remains no.',
     ];
 
+    const HINT_EVERY = 5; // attempts without progress before a hint slips out
+
     let attempts = 0;
+    let step = 0;
+    let stuck = 0;
+
+    function capitalize(word) {
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }
 
     function respond(text) {
-      for (const [pattern, answer] of rules) {
-        if (pattern.test(text)) return answer;
+      const current = path[step];
+      const m = text.match(current.match);
+      if (m) {
+        step++;
+        stuck = 0;
+        return current.win ? null : current.answer(m);
       }
+
+      stuck++;
+      for (const [pattern, answer] of rules) {
+        if (pattern.test(text)) return answer ?? `No. ${current.hint}`;
+      }
+      if (stuck % HINT_EVERY === 0) return `No. ${current.hint}`;
       return fallback[Math.floor(Math.random() * fallback.length)];
+    }
+
+    function shake() {
+      verdict.classList.remove('shake');
+      void verdict.offsetWidth; // restart the animation
+      verdict.classList.add('shake');
+    }
+
+    function win() {
+      document.body.classList.add('won');
+      verdict.textContent = 'Computer says YES';
+      reply.textContent = `It took you ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}.`;
+      input.disabled = true;
+      again.hidden = false;
+      again.focus();
+    }
+
+    function reset() {
+      attempts = step = stuck = 0;
+      document.body.classList.remove('won');
+      verdict.textContent = 'Computer says NO';
+      reply.textContent = '';
+      attemptsEl.textContent = '';
+      input.disabled = false;
+      again.hidden = true;
+      input.focus();
     }
 
     form.addEventListener('submit', (e) => {
@@ -135,13 +218,15 @@
 
       attempts++;
       attemptsEl.textContent = `Attempts: ${attempts}`;
-      reply.textContent = respond(text);
       input.value = '';
 
-      verdict.classList.remove('shake');
-      void verdict.offsetWidth; // restart the animation
-      verdict.classList.add('shake');
+      const answer = respond(text);
+      if (answer === null) return win();
+      reply.textContent = answer;
+      shake();
     });
+
+    again.addEventListener('click', reset);
   </script>
 </body>
 </html>
