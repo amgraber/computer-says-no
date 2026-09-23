@@ -72,7 +72,7 @@
       80% { transform: translateX(8px); }
     }
 
-    form { width: 100%; max-width: 640px; }
+    .prompt { width: 100%; max-width: 640px; }
 
     input {
       width: 100%;
@@ -125,10 +125,10 @@
       <span id="verdict-text">Computer says NO</span>
       <span class="dots" aria-label="Thinking"><span></span><span></span><span></span></span>
     </h1>
-    <form id="form" autocomplete="off">
-      <input id="input" type="text" placeholder="Try to make it say yes..." autofocus>
+    <div class="prompt">
+      <input id="input" type="text" placeholder="Try to make it say yes..." autocomplete="off" enterkeyhint="send" autofocus>
       <p id="reply"></p>
-    </form>
+    </div>
     <button id="again" type="button" hidden>Play again</button>
   </main>
   <p id="attempts"></p>
@@ -136,7 +136,6 @@
   <script>
     const verdict = document.getElementById('verdict');
     const verdictText = document.getElementById('verdict-text');
-    const form = document.getElementById('form');
     const input = document.getElementById('input');
     const reply = document.getElementById('reply');
     const attemptsEl = document.getElementById('attempts');
@@ -247,7 +246,9 @@
       input.focus();
     }
 
-    form.addEventListener('submit', (e) => {
+    // A keydown handler instead of a <form>: sandboxed previews block form submission.
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
       e.preventDefault();
       const text = input.value.trim();
       if (!text) return;
